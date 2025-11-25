@@ -67,9 +67,19 @@ COPY supervisord.conf /etc/supervisor/conf.d/app.conf
 COPY start.sh /app/start.sh
 
 RUN chmod +x /app/start.sh
-RUN useradd -m -r app && chown -R app:app /app
+
+# garante que pastas Laravel existem e são graváveis antes de trocar de usuário
+RUN mkdir -p /app/backend/storage \
+    /app/backend/bootstrap/cache && \
+    chmod -R 775 /app/backend/storage \
+    /app/backend/bootstrap/cache
+
+# cria usuário e aplica permissões corretas
+RUN useradd -m -r app && \
+    chown -R app:app /app
 
 USER app
+
 
 EXPOSE 8000 3000
 
