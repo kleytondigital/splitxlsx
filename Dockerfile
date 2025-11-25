@@ -16,7 +16,10 @@ COPY backend/composer.json backend/composer.lock* ./
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
 COPY backend /app/backend
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader && \
+
+RUN mkdir -p /app/backend/bootstrap/cache && \
+    chmod -R 775 /app/backend/bootstrap && \
+    composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader && \
     php artisan config:clear && php artisan cache:clear
 
 FROM node:18-alpine AS frontend_builder
