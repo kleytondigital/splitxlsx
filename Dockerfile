@@ -73,8 +73,11 @@ RUN chmod +x /app/start.sh
 RUN useradd -m -r app
 
 # garante que storage e bootstrap/cache EXISTEM
-RUN mkdir -p /app/backend/storage/framework/{cache,sessions,views} \
-    /app/backend/bootstrap/cache
+
+RUN mkdir -p /app/backend/storage/framework/cache \
+    && mkdir -p /app/backend/storage/framework/sessions \
+    && mkdir -p /app/backend/storage/framework/views \
+    && mkdir -p /app/backend/bootstrap/cache
 
 # aplica permissões
 # aplica permissões corretas em TODO o backend
