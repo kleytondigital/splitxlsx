@@ -6,7 +6,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
 
   const backendUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000',
+    () => process.env.NEXT_PUBLIC_BACKEND_URL || 'https://n8n-mpc.h3ag2x.easypanel.host',
     []
   );
 
