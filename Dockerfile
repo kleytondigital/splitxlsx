@@ -77,11 +77,10 @@ RUN mkdir -p /app/backend/storage/framework/{cache,sessions,views} \
     /app/backend/bootstrap/cache
 
 # aplica permissões
-# garante permissões completas do backend
+# aplica permissões corretas em TODO o backend
 RUN chown -R app:app /app/backend && \
     chmod -R 775 /app/backend/storage \
-    /app/backend/bootstrap/cache
-
+                /app/backend/bootstrap/cache
 
 USER app
 
