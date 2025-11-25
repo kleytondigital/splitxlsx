@@ -4,10 +4,10 @@ FROM composer:2 AS backend_deps
 WORKDIR /app/backend
 
 COPY backend/composer.json backend/composer.lock* ./
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-req=ext-gd
 
 COPY backend /app/backend
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader && \
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-req=ext-gd && \
     php artisan config:clear && php artisan cache:clear
 
 FROM node:18-alpine AS frontend_builder
