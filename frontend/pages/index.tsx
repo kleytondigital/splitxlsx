@@ -7,6 +7,10 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [removeDuplicates, setRemoveDuplicates] = useState(true);
+  const [downloadType, setDownloadType] = useState<'grouped' | 'separated'>('separated');
+  const [chunkSize, setChunkSize] = useState(100);
+  const [statistics, setStatistics] = useState<any>(null);
 
   const backendUrl = useMemo(
     () => process.env.NEXT_PUBLIC_BACKEND_URL || 'https://n8n-mpc.h3ag2x.easypanel.host',
@@ -61,8 +65,12 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setSuccess(false);
+    setStatistics(null);
     const fd = new FormData();
     fd.append('file', file);
+    fd.append('remove_duplicates', removeDuplicates.toString());
+    fd.append('download_type', downloadType);
+    fd.append('chunk_size', chunkSize.toString());
 
     try {
       const res = await fetch(`${backendUrl}/api/upload`, {
@@ -82,7 +90,13 @@ export default function Home() {
       a.click();
       window.URL.revokeObjectURL(url);
       setSuccess(true);
-      setFile(null);
+      setStatistics({
+        totalContacts: 'Processado com sucesso',
+        downloadType: downloadType === 'grouped' ? 'Arquivo único' : 'Múltiplos arquivos',
+        chunkSize: downloadType === 'separated' ? chunkSize : 'N/A',
+        duplicatesRemoved: removeDuplicates,
+      });
+      // Não limpa o arquivo para permitir novo processamento com diferentes opções
     } catch (e: any) {
       setError('Erro ao conectar com o servidor: ' + (e.message || 'Tente novamente'));
     } finally {
@@ -103,7 +117,7 @@ export default function Home() {
           </div>
           <h1 style={styles.title}>Padronizador de Listas</h1>
           <p style={styles.subtitle}>
-            Faça upload de um arquivo XLSX ou CSV com contatos. O sistema processará e retornará um arquivo ZIP com listas padronizadas (100 contatos por arquivo).
+            Faça upload de um arquivo XLSX ou CSV com contatos. O sistema detecta automaticamente as colunas, padroniza os números e remove duplicados. Escolha entre download agrupado ou separado em múltiplos arquivos.
           </p>
         </div>
 
@@ -192,6 +206,70 @@ export default function Home() {
           </div>
         )}
 
+        {file && (
+          <div style={styles.optionsSection}>
+            <h3 style={styles.optionsTitle}>Opções de Processamento</h3>
+            
+            <div style={styles.optionGroup}>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={removeDuplicates}
+                  onChange={(e) => setRemoveDuplicates(e.target.checked)}
+                  style={styles.checkbox}
+                />
+                <span>Remover duplicados</span>
+              </label>
+              <div style={styles.optionHint}>Remove contatos com o mesmo número de telefone</div>
+            </div>
+
+            <div style={styles.optionGroup}>
+              <label style={styles.label}>Tipo de Download:</label>
+              <div style={styles.radioGroup}>
+                <label style={styles.radioLabel}>
+                  <input
+                    type="radio"
+                    name="downloadType"
+                    value="separated"
+                    checked={downloadType === 'separated'}
+                    onChange={(e) => setDownloadType(e.target.value as 'separated' | 'grouped')}
+                    style={styles.radio}
+                  />
+                  <span>Separado (múltiplos arquivos)</span>
+                </label>
+                <label style={styles.radioLabel}>
+                  <input
+                    type="radio"
+                    name="downloadType"
+                    value="grouped"
+                    checked={downloadType === 'grouped'}
+                    onChange={(e) => setDownloadType(e.target.value as 'separated' | 'grouped')}
+                    style={styles.radio}
+                  />
+                  <span>Agrupado (arquivo único)</span>
+                </label>
+              </div>
+            </div>
+
+            {downloadType === 'separated' && (
+              <div style={styles.optionGroup}>
+                <label style={styles.label}>
+                  Tamanho do chunk (contatos por arquivo):
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={chunkSize}
+                  onChange={(e) => setChunkSize(Math.max(1, Math.min(1000, parseInt(e.target.value) || 100)))}
+                  style={styles.numberInput}
+                />
+                <div style={styles.optionHint}>Número de contatos por arquivo (1-1000)</div>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           onClick={upload}
           disabled={loading || !file}
@@ -225,12 +303,14 @@ export default function Home() {
 
         <div style={styles.footer}>
           <div style={styles.infoBox}>
-            <strong>Como funciona:</strong>
+            <strong>Recursos da Ferramenta:</strong>
             <ul style={styles.infoList}>
-              <li>O sistema detecta automaticamente as colunas de telefone e nome</li>
-              <li>Padroniza os números para o formato internacional (55 + DDD + número)</li>
-              <li>Divide a lista em arquivos de até 100 contatos cada</li>
-              <li>Retorna um arquivo ZIP com todas as listas padronizadas</li>
+              <li><strong>Detecção automática:</strong> Identifica colunas de telefone e nome automaticamente</li>
+              <li><strong>Padronização:</strong> Converte números para formato internacional (55 + DDD + número)</li>
+              <li><strong>Remoção de duplicados:</strong> Elimina contatos com o mesmo número de telefone</li>
+              <li><strong>Download flexível:</strong> Escolha entre arquivo único ou múltiplos arquivos</li>
+              <li><strong>Configurável:</strong> Ajuste o tamanho dos chunks (1-1000 contatos por arquivo)</li>
+              <li><strong>Estatísticas:</strong> Receba relatório detalhado do processamento</li>
             </ul>
           </div>
         </div>
@@ -431,6 +511,79 @@ const styles: { [key: string]: React.CSSProperties } = {
     margin: '12px 0 0 0',
     paddingLeft: '20px',
     lineHeight: '1.8',
+  },
+  optionsSection: {
+    background: '#f7fafc',
+    padding: '24px',
+    borderRadius: '12px',
+    marginBottom: '20px',
+    border: '1px solid #e2e8f0',
+  },
+  optionsTitle: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#2d3748',
+    margin: '0 0 20px 0',
+  },
+  optionGroup: {
+    marginBottom: '20px',
+  },
+  label: {
+    display: 'block',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#4a5568',
+    marginBottom: '8px',
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '15px',
+    color: '#2d3748',
+    cursor: 'pointer',
+  },
+  checkbox: {
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer',
+    accentColor: '#667eea',
+  },
+  radioGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    marginTop: '8px',
+  },
+  radioLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '15px',
+    color: '#2d3748',
+    cursor: 'pointer',
+  },
+  radio: {
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer',
+    accentColor: '#667eea',
+  },
+  numberInput: {
+    width: '100%',
+    padding: '10px 12px',
+    border: '1px solid #cbd5e0',
+    borderRadius: '8px',
+    fontSize: '15px',
+    color: '#2d3748',
+    marginTop: '8px',
+    transition: 'border-color 0.2s',
+  },
+  optionHint: {
+    fontSize: '13px',
+    color: '#718096',
+    marginTop: '4px',
+    fontStyle: 'italic',
   },
 };
 

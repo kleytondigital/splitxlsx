@@ -28,6 +28,9 @@ class ListController extends Controller
                 'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv',
                 'max:5120',
             ],
+            'remove_duplicates' => ['boolean'],
+            'download_type' => ['in:grouped,separated'],
+            'chunk_size' => ['integer', 'min:1', 'max:1000'],
         ]);
 
         /** @var UploadedFile $uploadedFile */
@@ -59,7 +62,11 @@ class ListController extends Controller
             ], 422);
         }
 
-        $cleanContacts = $this->sanitizeRows($rows, $numberIndex, $nameIndex);
+        $removeDuplicates = $request->boolean('remove_duplicates', true);
+        $downloadType = $request->input('download_type', 'separated');
+        $chunkSize = (int) $request->input('chunk_size', self::CHUNK_SIZE);
+
+        $cleanContacts = $this->sanitizeRows($rows, $numberIndex, $nameIndex, $removeDuplicates);
 
         if ($cleanContacts->isEmpty()) {
             return response()->json([
@@ -67,7 +74,19 @@ class ListController extends Controller
             ], 422);
         }
 
-        $zipPath = $this->generateZipFromChunks($cleanContacts);
+        $totalContacts = $cleanContacts->count();
+        $statistics = [
+            'total_contacts' => $totalContacts,
+            'total_files' => $downloadType === 'grouped' ? 1 : (int) ceil($totalContacts / $chunkSize),
+            'chunk_size' => $chunkSize,
+            'removed_duplicates' => $removeDuplicates,
+        ];
+
+        if ($downloadType === 'grouped') {
+            $zipPath = $this->generateGroupedFile($cleanContacts, $statistics);
+        } else {
+            $zipPath = $this->generateZipFromChunks($cleanContacts, $chunkSize, $statistics);
+        }
 
         return response()->download($zipPath, basename($zipPath))->deleteFileAfterSend(true);
     }
@@ -140,9 +159,10 @@ class ListController extends Controller
         return ($best !== null && $scores[$best] >= 2) ? $best : null;
     }
 
-    private function sanitizeRows(array $rows, int $numberIndex, int $nameIndex): Collection
+    private function sanitizeRows(array $rows, int $numberIndex, int $nameIndex, bool $removeDuplicates = true): Collection
     {
         $contacts = collect();
+        $seenNumbers = [];
 
         foreach ($rows as $row) {
             $rawNumber = isset($row[$numberIndex]) ? (string) $row[$numberIndex] : '';
@@ -156,17 +176,29 @@ class ListController extends Controller
                 $digits = '55'.ltrim($digits, '0');
             }
 
+            // Valida formato final (deve ter 13 dígitos: 55 + DDD + número)
+            if (strlen($digits) < 12 || strlen($digits) > 13) {
+                continue;
+            }
+
+            // Remove duplicados se solicitado
+            if ($removeDuplicates && isset($seenNumbers[$digits])) {
+                continue;
+            }
+
+            $seenNumbers[$digits] = true;
+
             $name = isset($row[$nameIndex]) ? trim((string) $row[$nameIndex]) : '';
 
             $contacts->push([$digits, $name]);
         }
 
-        return $contacts->unique(fn ($contact) => $contact[0])->values();
+        return $contacts->values();
     }
 
-    private function generateZipFromChunks(Collection $contacts): string
+    private function generateZipFromChunks(Collection $contacts, int $chunkSize, array $statistics): string
     {
-        $chunked = $contacts->chunk(self::CHUNK_SIZE);
+        $chunked = $contacts->chunk($chunkSize);
         $zipName = 'listas_padronizadas_'.Str::uuid().'.zip';
         $zipPath = Storage::disk('local')->path($zipName);
 
@@ -194,11 +226,60 @@ class ListController extends Controller
             $zip->addFile($tempPath, $fileName);
         }
 
+        // Adiciona arquivo de estatísticas
+        $statsContent = "Estatísticas do Processamento\n";
+        $statsContent .= "============================\n\n";
+        $statsContent .= "Total de contatos: {$statistics['total_contacts']}\n";
+        $statsContent .= "Total de arquivos gerados: {$statistics['total_files']}\n";
+        $statsContent .= "Tamanho do chunk: {$statistics['chunk_size']}\n";
+        $statsContent .= "Duplicados removidos: ".($statistics['removed_duplicates'] ? 'Sim' : 'Não')."\n";
+        $statsContent .= "Data de processamento: ".now()->format('d/m/Y H:i:s')."\n";
+
+        $zip->addFromString('estatisticas.txt', $statsContent);
+
         $zip->close();
 
         foreach ($tempFiles as $file) {
             @unlink($file);
         }
+
+        return $zipPath;
+    }
+
+    private function generateGroupedFile(Collection $contacts, array $statistics): string
+    {
+        $export = new Spreadsheet();
+        $sheet = $export->getActiveSheet();
+        $sheet->fromArray(['Mobile Number', 'Name'], null, 'A1');
+        $sheet->fromArray($contacts->toArray(), null, 'A2');
+
+        $fileName = 'lista_completa_'.Str::uuid().'.xlsx';
+        $filePath = Storage::disk('local')->path($fileName);
+
+        IOFactory::createWriter($export, 'Xlsx')->save($filePath);
+
+        // Cria ZIP com arquivo único e estatísticas
+        $zipName = 'lista_agrupada_'.Str::uuid().'.zip';
+        $zipPath = Storage::disk('local')->path($zipName);
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            throw new \RuntimeException('Não foi possível criar o arquivo ZIP.');
+        }
+
+        $zip->addFile($filePath, 'lista_completa.xlsx');
+
+        $statsContent = "Estatísticas do Processamento\n";
+        $statsContent .= "============================\n\n";
+        $statsContent .= "Total de contatos: {$statistics['total_contacts']}\n";
+        $statsContent .= "Arquivo único gerado: Sim\n";
+        $statsContent .= "Duplicados removidos: ".($statistics['removed_duplicates'] ? 'Sim' : 'Não')."\n";
+        $statsContent .= "Data de processamento: ".now()->format('d/m/Y H:i:s')."\n";
+
+        $zip->addFromString('estatisticas.txt', $statsContent);
+        $zip->close();
+
+        @unlink($filePath);
 
         return $zipPath;
     }
