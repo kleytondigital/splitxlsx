@@ -13,7 +13,7 @@ rm -rf /var/lib/apt/lists/*
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 COPY backend/composer.json backend/composer.lock* ./
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
 COPY backend /app/backend
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader && \
