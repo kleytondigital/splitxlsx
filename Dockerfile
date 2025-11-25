@@ -68,17 +68,22 @@ COPY start.sh /app/start.sh
 
 RUN chmod +x /app/start.sh
 
-# garante que pastas Laravel existem e são graváveis antes de trocar de usuário
-RUN mkdir -p /app/backend/storage \
+
+# cria usuário
+RUN useradd -m -r app
+
+# garante que storage e bootstrap/cache EXISTEM
+RUN mkdir -p /app/backend/storage/framework/{cache,sessions,views} \
+    /app/backend/bootstrap/cache
+
+# aplica permissões
+RUN chown -R app:app /app/backend/storage \
     /app/backend/bootstrap/cache && \
     chmod -R 775 /app/backend/storage \
     /app/backend/bootstrap/cache
 
-# cria usuário e aplica permissões corretas
-RUN useradd -m -r app && \
-    chown -R app:app /app
-
 USER app
+
 
 
 EXPOSE 8000 3000
