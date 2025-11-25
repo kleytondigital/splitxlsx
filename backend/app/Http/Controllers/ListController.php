@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -17,78 +17,104 @@ class ListController extends Controller
 
     public function process(Request $request)
     {
-        if (! $request->expectsJson()) {
-            $request->headers->set('Accept', 'application/json');
-        }
-
-        $request->validate([
-            'file' => [
-                'required',
-                'file',
-                'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv',
-                'max:5120',
-            ],
-            'remove_duplicates' => ['boolean'],
-            'download_type' => ['in:grouped,separated'],
-            'chunk_size' => ['integer', 'min:1', 'max:1000'],
-        ]);
-
-        /** @var UploadedFile $uploadedFile */
-        $uploadedFile = $request->file('file');
-
         try {
-            $spreadsheet = IOFactory::load($uploadedFile->getRealPath());
-        } catch (\Throwable $exception) {
+            if (! $request->expectsJson()) {
+                $request->headers->set('Accept', 'application/json');
+            }
+
+            $request->validate([
+                'file' => [
+                    'required',
+                    'file',
+                    'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv',
+                    'max:5120',
+                ],
+                'remove_duplicates' => ['boolean'],
+                'download_type' => ['in:grouped,separated'],
+                'chunk_size' => ['integer', 'min:1', 'max:1000'],
+            ]);
+
+            /** @var UploadedFile $uploadedFile */
+            $uploadedFile = $request->file('file');
+
+            try {
+                $spreadsheet = IOFactory::load($uploadedFile->getRealPath());
+            } catch (\Throwable $exception) {
+                \Log::error('Erro ao carregar planilha', [
+                    'error' => $exception->getMessage(),
+                    'trace' => $exception->getTraceAsString(),
+                ]);
+
+                return response()->json([
+                    'error' => 'Não foi possível abrir a planilha fornecida.',
+                    'details' => config('app.debug') ? $exception->getMessage() : 'Formato de arquivo inválido.',
+                ], 422);
+            }
+
+            $rows = $spreadsheet->getActiveSheet()->toArray();
+
+            if (count($rows) <= 1) {
+                return response()->json(['error' => 'Planilha sem dados.'], 422);
+            }
+
+            $header = $this->normalizeHeader(array_shift($rows));
+
+            $numberIndex = $this->detectNumberColumn($header, $rows);
+            $nameIndex = $this->detectNameColumn($header, $rows);
+
+            if ($numberIndex === null || $nameIndex === null) {
+                return response()->json([
+                    'error' => 'Não foi possível identificar colunas de telefone e nome automaticamente.',
+                ], 422);
+            }
+
+            $removeDuplicates = $request->boolean('remove_duplicates', true);
+            $downloadType = $request->input('download_type', 'separated');
+            $chunkSize = (int) $request->input('chunk_size', self::CHUNK_SIZE);
+
+            $cleanContacts = $this->sanitizeRows($rows, $numberIndex, $nameIndex, $removeDuplicates);
+
+            if ($cleanContacts->isEmpty()) {
+                return response()->json([
+                    'error' => 'Nenhum telefone válido encontrado após a limpeza.',
+                ], 422);
+            }
+
+            $totalContacts = $cleanContacts->count();
+            $statistics = [
+                'total_contacts' => $totalContacts,
+                'total_files' => $downloadType === 'grouped' ? 1 : (int) ceil($totalContacts / $chunkSize),
+                'chunk_size' => $chunkSize,
+                'removed_duplicates' => $removeDuplicates,
+            ];
+
+            if ($downloadType === 'grouped') {
+                $zipPath = $this->generateGroupedFile($cleanContacts, $statistics);
+            } else {
+                $zipPath = $this->generateZipFromChunks($cleanContacts, $chunkSize, $statistics);
+            }
+
+            return response()->download($zipPath, basename($zipPath))->deleteFileAfterSend(true);
+        } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
-                'error' => 'Não foi possível abrir a planilha fornecida.',
-                'details' => $exception->getMessage(),
+                'error' => 'Erro de validação',
+                'details' => $e->errors(),
             ], 422);
-        }
+        } catch (\Throwable $e) {
+            \Log::error('Erro ao processar lista', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        $rows = $spreadsheet->getActiveSheet()->toArray();
-
-        if (count($rows) <= 1) {
-            return response()->json(['error' => 'Planilha sem dados.'], 422);
-        }
-
-        $header = $this->normalizeHeader(array_shift($rows));
-
-        $numberIndex = $this->detectNumberColumn($header, $rows);
-        $nameIndex = $this->detectNameColumn($header, $rows);
-
-        if ($numberIndex === null || $nameIndex === null) {
             return response()->json([
-                'error' => 'Não foi possível identificar colunas de telefone e nome automaticamente.',
-            ], 422);
+                'error' => 'Erro interno do servidor',
+                'message' => config('app.debug') ? $e->getMessage() : 'Ocorreu um erro ao processar a requisição',
+                'file' => config('app.debug') ? $e->getFile() : null,
+                'line' => config('app.debug') ? $e->getLine() : null,
+            ], 500);
         }
-
-        $removeDuplicates = $request->boolean('remove_duplicates', true);
-        $downloadType = $request->input('download_type', 'separated');
-        $chunkSize = (int) $request->input('chunk_size', self::CHUNK_SIZE);
-
-        $cleanContacts = $this->sanitizeRows($rows, $numberIndex, $nameIndex, $removeDuplicates);
-
-        if ($cleanContacts->isEmpty()) {
-            return response()->json([
-                'error' => 'Nenhum telefone válido encontrado após a limpeza.',
-            ], 422);
-        }
-
-        $totalContacts = $cleanContacts->count();
-        $statistics = [
-            'total_contacts' => $totalContacts,
-            'total_files' => $downloadType === 'grouped' ? 1 : (int) ceil($totalContacts / $chunkSize),
-            'chunk_size' => $chunkSize,
-            'removed_duplicates' => $removeDuplicates,
-        ];
-
-        if ($downloadType === 'grouped') {
-            $zipPath = $this->generateGroupedFile($cleanContacts, $statistics);
-        } else {
-            $zipPath = $this->generateZipFromChunks($cleanContacts, $chunkSize, $statistics);
-        }
-
-        return response()->download($zipPath, basename($zipPath))->deleteFileAfterSend(true);
     }
 
     private function normalizeHeader(array $header): array
@@ -200,7 +226,14 @@ class ListController extends Controller
     {
         $chunked = $contacts->chunk($chunkSize);
         $zipName = 'listas_padronizadas_'.Str::uuid().'.zip';
-        $zipPath = Storage::disk('local')->path($zipName);
+        
+        // Garante que o diretório existe
+        $storagePath = storage_path('app');
+        if (!is_dir($storagePath)) {
+            mkdir($storagePath, 0755, true);
+        }
+        
+        $zipPath = $storagePath.'/'.$zipName;
 
         $zip = new ZipArchive();
 
@@ -218,7 +251,7 @@ class ListController extends Controller
 
             $fileName = sprintf('lista_%03d.xlsx', $index + 1);
             $tempName = sprintf('%s_%s', Str::uuid(), $fileName);
-            $tempPath = Storage::disk('local')->path($tempName);
+            $tempPath = storage_path('app/'.$tempName);
 
             IOFactory::createWriter($export, 'Xlsx')->save($tempPath);
             $tempFiles[] = $tempPath;
@@ -254,13 +287,17 @@ class ListController extends Controller
         $sheet->fromArray($contacts->toArray(), null, 'A2');
 
         $fileName = 'lista_completa_'.Str::uuid().'.xlsx';
-        $filePath = Storage::disk('local')->path($fileName);
+        $storagePath = storage_path('app');
+        if (!is_dir($storagePath)) {
+            mkdir($storagePath, 0755, true);
+        }
+        $filePath = $storagePath.'/'.$fileName;
 
         IOFactory::createWriter($export, 'Xlsx')->save($filePath);
 
         // Cria ZIP com arquivo único e estatísticas
         $zipName = 'lista_agrupada_'.Str::uuid().'.zip';
-        $zipPath = Storage::disk('local')->path($zipName);
+        $zipPath = $storagePath.'/'.$zipName;
 
         $zip = new ZipArchive();
         if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {

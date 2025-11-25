@@ -69,10 +69,13 @@ RUN mkdir -p /app/backend/storage/framework/cache \
     && mkdir -p /app/backend/storage/framework/sessions \
     && mkdir -p /app/backend/storage/framework/views \
     && mkdir -p /app/backend/storage/logs \
+    && mkdir -p /app/backend/storage/app/private \
     && mkdir -p /app/backend/bootstrap/cache
 
 RUN chown -R app:app /app && \
-    chmod -R 775 /app/backend/storage /app/backend/bootstrap/cache
+    chmod -R 775 /app/backend/storage /app/backend/bootstrap/cache && \
+    touch /app/backend/storage/logs/laravel.log && \
+    chmod 664 /app/backend/storage/logs/laravel.log
 
 USER app
 
