@@ -39,6 +39,17 @@ docker compose up --build
 - Backend API: http://localhost:8000/api/upload
 - Postgres com dados persistidos em `db_data`.
 
+### Imagem única (EasyPanel ou single container)
+Há um `Dockerfile` na raiz que sobe frontend e backend no mesmo container usando Supervisor.
+
+```bash
+docker build -t splitxlsx .
+docker run --env-file backend/.env --env NEXT_PUBLIC_BACKEND_URL=http://localhost:8000 -p 8000:8000 -p 3000:3000 splitxlsx
+```
+
+- Porta `8000`: Laravel (`/api/upload`)
+- Porta `3000`: Next.js (`/`)
+
 ### Manualmente
 - Backend: `php artisan serve --host=0.0.0.0 --port=8000`
 - Frontend: `npm run dev --prefix frontend`
