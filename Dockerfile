@@ -14,12 +14,9 @@ RUN apt-get update && \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# copia composer.json e lock
 COPY backend/composer.json backend/composer.lock* ./
-
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
-# copia backend completo
 COPY backend/ /app/backend
 
 
@@ -58,36 +55,25 @@ RUN apt-get update && \
     docker-php-ext-install gd pdo pdo_pgsql zip && \
     rm -rf /var/lib/apt/lists/*
 
-# copia backend e frontend já instalados
 COPY --from=backend_deps /app/backend /app/backend
 COPY --from=frontend_builder /app/frontend /app/frontend
 
-# supervisor e startup
 COPY supervisord.conf /etc/supervisor/conf.d/app.conf
 COPY start.sh /app/start.sh
 
 RUN chmod +x /app/start.sh
 
-
-# cria usuário
 RUN useradd -m -r app
-
-# garante que storage e bootstrap/cache EXISTEM
 
 RUN mkdir -p /app/backend/storage/framework/cache \
     && mkdir -p /app/backend/storage/framework/sessions \
     && mkdir -p /app/backend/storage/framework/views \
     && mkdir -p /app/backend/bootstrap/cache
 
-# aplica permissões
-# aplica permissões corretas em TODO o backend
 RUN chown -R app:app /app/backend && \
-    chmod -R 775 /app/backend/storage \
-                /app/backend/bootstrap/cache
+    chmod -R 775 /app/backend/storage /app/backend/bootstrap/cache
 
 USER app
-
-
 
 EXPOSE 8000 3000
 
