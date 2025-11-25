@@ -26,10 +26,12 @@ ENV APP_PORT=8000 \
     PATH="/app/backend/vendor/bin:/app/frontend/node_modules/.bin:${PATH}"
 
 RUN apt-get update && \
-    apt-get install -y git unzip libzip-dev libpq-dev curl supervisor gnupg && \
+    apt-get install -y git unzip libzip-dev libpq-dev \
+        libpng-dev libjpeg-dev libfreetype6-dev curl supervisor && \
     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
-    docker-php-ext-install pdo pdo_pgsql zip && \
+    docker-php-ext-configure gd --with-freetype --with-jpeg && \
+    docker-php-ext-install gd pdo pdo_pgsql zip && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
