@@ -68,9 +68,10 @@ RUN useradd -m -r app
 RUN mkdir -p /app/backend/storage/framework/cache \
     && mkdir -p /app/backend/storage/framework/sessions \
     && mkdir -p /app/backend/storage/framework/views \
+    && mkdir -p /app/backend/storage/logs \
     && mkdir -p /app/backend/bootstrap/cache
 
-RUN chown -R app:app /app/backend && \
+RUN chown -R app:app /app && \
     chmod -R 775 /app/backend/storage /app/backend/bootstrap/cache
 
 USER app
