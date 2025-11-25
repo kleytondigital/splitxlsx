@@ -1,0 +1,19 @@
+# raiz
+/vendor/
+/node_modules/
+/.env
+.env.local
+.env.*.local
+/storage/*.key
+
+# backend Laravel
+backend/vendor/
+backend/node_modules/
+backend/storage/
+backend/bootstrap/cache/
+backend/.env
+
+# frontend Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
