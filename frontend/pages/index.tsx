@@ -13,7 +13,7 @@ export default function Home() {
   const [statistics, setStatistics] = useState<any>(null);
 
   const backendUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_BACKEND_URL || 'https://n8n-mpc.h3ag2x.easypanel.host',
+    () => process.env.NEXT_PUBLIC_BACKEND_URL || 'https://controle-de-envio-mcp.y0q0vs.easypanel.host',
     []
   );
 
