@@ -68,7 +68,8 @@ export default function Home() {
     setStatistics(null);
     const fd = new FormData();
     fd.append('file', file);
-    fd.append('remove_duplicates', removeDuplicates.toString());
+    // FormData envia strings, então enviamos 'true' ou 'false' como string
+    fd.append('remove_duplicates', removeDuplicates ? 'true' : 'false');
     fd.append('download_type', downloadType);
     fd.append('chunk_size', chunkSize.toString());
 

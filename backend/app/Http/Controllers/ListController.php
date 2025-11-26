@@ -29,9 +29,9 @@ class ListController extends Controller
                     'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv',
                     'max:5120',
                 ],
-                'remove_duplicates' => ['boolean'],
-                'download_type' => ['in:grouped,separated'],
-                'chunk_size' => ['integer', 'min:1', 'max:1000'],
+                'remove_duplicates' => ['nullable', 'in:true,false,1,0'],
+                'download_type' => ['nullable', 'in:grouped,separated'],
+                'chunk_size' => ['nullable', 'integer', 'min:1', 'max:1000'],
             ]);
 
             /** @var UploadedFile $uploadedFile */
@@ -68,7 +68,10 @@ class ListController extends Controller
                 ], 422);
             }
 
-            $removeDuplicates = $request->boolean('remove_duplicates', true);
+            // Converte string boolean para boolean
+            $removeDuplicatesInput = $request->input('remove_duplicates', 'true');
+            $removeDuplicates = in_array(strtolower($removeDuplicatesInput), ['true', '1', 'yes'], true);
+            
             $downloadType = $request->input('download_type', 'separated');
             $chunkSize = (int) $request->input('chunk_size', self::CHUNK_SIZE);
 
